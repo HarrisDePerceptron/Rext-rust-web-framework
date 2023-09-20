@@ -4,32 +4,42 @@ use crate::socket;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use uuid::Uuid;
 
-#[derive(Clone)]
+#[derive(Clone, Default, Debug)]
 pub struct Room {
     pub id: String,
     pub sockets: Vec<socket::AppSocket>,
 }
 
 impl Room {
+    pub fn new(name: &str) -> Room {
+        let id = name.to_string();
+
+        Room {
+            id,
+            sockets: Vec::new(),
+        }
+    }
     pub fn total_clients(&self) -> usize {
         self.sockets.len()
     }
 
     pub async fn send(&self, msg: &str) -> Result<()> {
         for s in &self.sockets {
+            log::info!("Sening message in room {} to client: {}", self.id, s.id);
             s.socket.send(msg.to_string()).await?;
         }
 
         Ok(())
     }
 
-    pub async fn add_client(&mut self, client: socket::AppSocket) {
+    pub fn add_client(&mut self, client: socket::AppSocket) {
         //
         self.sockets.push(client);
     }
 
-    pub async fn remove_client(&mut self, id: &str) -> Result<()> {
+    pub fn remove_client(&mut self, id: &str) -> Result<()> {
         let index = self
             .sockets
             .iter()

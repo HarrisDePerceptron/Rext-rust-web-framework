@@ -24,7 +24,22 @@ use futures::{
 };
 use tokio::sync::mpsc;
 
-#[derive(Clone)]
+use crate::room;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomMessage {
+    pub message: String,
+    pub room: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Command {
+    JOIN(String),
+    LEAVE(String),
+    MESSAGE(RoomMessage),
+}
+
+#[derive(Clone, Debug)]
 pub struct AppSocket {
     pub id: String,
     pub socket: mpsc::Sender<String>,
@@ -35,12 +50,12 @@ pub struct AppSocketResv {
     pub socket: mpsc::Receiver<String>,
 }
 
-pub async fn handle_socket(mut socket: WebSocket, state: Arc<Mutex<server::AppState>>) {
+pub async fn handle_socket(socket: WebSocket, state: Arc<Mutex<server::Server>>) {
     log::info!("Socket connected!!");
 
     let (sender, resv) = socket.split();
 
-    let (tx, mut rx) = mpsc::channel(32);
+    let (tx, rx) = mpsc::channel(32);
     let id = Uuid::new_v4().to_string();
 
     let app_socket = AppSocket {
@@ -61,7 +76,7 @@ pub async fn handle_socket(mut socket: WebSocket, state: Arc<Mutex<server::AppSt
     tokio::spawn(write(sender, app_socket_resc));
 }
 
-pub async fn broadcast(msg: &str, state: Arc<Mutex<server::AppState>>) {
+pub async fn broadcast(msg: &str, state: Arc<Mutex<server::Server>>) {
     //
     let sockets = state.lock().unwrap().sockets.clone();
     for soc in &sockets {
@@ -71,20 +86,73 @@ pub async fn broadcast(msg: &str, state: Arc<Mutex<server::AppState>>) {
 
 pub async fn read(
     mut receiver: SplitStream<WebSocket>,
-    id: String,
-    state: Arc<Mutex<server::AppState>>,
-) {
+    client_id: String,
+    state: Arc<Mutex<server::Server>>,
+) -> Result<()> {
     while let Some(Ok(msg)) = receiver.next().await {
         if let Message::Text(msg) = msg {
-            log::info!("Got message: {}: {}", id, msg);
+            log::info!("Got message: {}: {}", client_id, msg);
 
-            if msg == "broadcast" {
-                broadcast("hello this is a broad cast message", state.clone()).await;
-            }
+            let command: Command = match serde_json::from_str(&msg) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::error!("Command deserialzation error: {}", e.to_string());
+                    continue;
+                }
+            };
+            match command {
+                Command::JOIN(v) => {
+                    if let Ok(mut s) = state.lock() {
+                        let client = s.get_client(&client_id);
+                        if let Some(client) = client {
+                            s.join_room(&v, client);
+
+                            log::info!("Joined room {} with client id {}", v, client_id);
+                        }
+                    }
+                }
+                Command::LEAVE(v) => {
+                    println!("wants to leave {}", v);
+
+                    if let Ok(mut state) = state.lock() {
+                        match state.leave_room(&v, &client_id) {
+                            Ok(_) => {
+                                log::info!("Client {} left room {}", client_id, v);
+                            }
+                            Err(e) => {
+                                log::error!("{}", e.to_string());
+                                continue;
+                            }
+                        };
+                    }
+                }
+                Command::MESSAGE(v) => {
+                    let mut room: Option<room::Room> = None;
+
+                    if let Ok(mut state) = state.lock() {
+                        room = state.get_room(&v.room);
+                    }
+
+                    if let Some(room) = room {
+                        if let Err(e) = room.send(&v.message).await {
+                            log::error!(
+                                "Got error while sending message '{}' to room '{}': {}",
+                                v.message,
+                                v.room,
+                                e.to_string()
+                            )
+                        }
+                    } else {
+                        log::error!("room {} not found", v.room)
+                    }
+                }
+            };
         } else {
             continue;
         }
     }
+
+    Ok(())
 }
 
 pub async fn write(mut sender: SplitSink<WebSocket, Message>, mut app_socket_resv: AppSocketResv) {

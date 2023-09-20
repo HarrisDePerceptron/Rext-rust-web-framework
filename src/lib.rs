@@ -1,7 +1,10 @@
+pub mod auth;
 pub mod room;
 pub mod server;
 pub mod socket;
+pub mod utils;
+pub mod secrets;
 
-fn hello() -> () {
+pub fn hello() {
     println!("hello world. axum test");
 }
