@@ -5,12 +5,87 @@ use anyhow::{anyhow, Result};
 use crate::room;
 use axum::{
     extract::{ws::WebSocketUpgrade, State},
-    response::Response,
+    http::{header::HeaderMap, Request, StatusCode},
+    response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::sync::{Arc, Mutex};
+use thiserror::Error;
+
+#[derive(Debug, Serialize, Clone)]
+struct ServerResponse<T> {
+    message: String,
+    result: T,
+    code: u32,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct ServerErrorResponse {
+    message: String,
+    error: ServerError,
+    code: u32,
+}
+
+#[derive(Debug, Error, Serialize, Clone)]
+enum ServerError {
+    #[error("UnAuthorized: `{0}`")]
+    Unauthorized(String),
+
+    #[error("Bad Request: `{0}`")]
+    BadRequest(String),
+
+    #[error("Internal Error: `{0}`")]
+    Internal(String),
+}
+
+impl From<ServerError> for ServerErrorResponse {
+    fn from(value: ServerError) -> ServerErrorResponse {
+        match value {
+            ServerError::Unauthorized(_) => ServerErrorResponse {
+                message: "Unauthorized".to_string(),
+                code: 401u32,
+                error: value,
+            },
+            ServerError::BadRequest(_) => ServerErrorResponse {
+                message: "Bad Request".to_string(),
+                code: 400u32,
+                error: value,
+            },
+            ServerError::Internal(_) => ServerErrorResponse {
+                message: "Internal server error".to_string(),
+                code: 500u32,
+                error: value,
+            },
+        }
+    }
+}
+
+impl IntoResponse for ServerError {
+    fn into_response(self) -> Response {
+        match self {
+            Self::Unauthorized(_) => (
+                StatusCode::UNAUTHORIZED,
+                Json(ServerErrorResponse::from(self)),
+            )
+                .into_response(),
+            Self::BadRequest(_) => (
+                StatusCode::BAD_REQUEST,
+                Json(ServerErrorResponse::from(self)),
+            )
+                .into_response(),
+            _ => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ServerErrorResponse::from(ServerError::Internal(
+                    "Internal server error. Check  logs".to_string(),
+                ))),
+            )
+                .into_response(),
+        }
+    }
+}
 
 pub struct Server {
     pub sockets: Vec<socket::AppSocket>,
@@ -97,7 +172,23 @@ struct HelloResponse {
     result: String,
 }
 
-pub async fn handler(ws: WebSocketUpgrade, State(state): State<Arc<Mutex<Server>>>) -> Response {
+pub async fn handler(
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<Mutex<Server>>>,
+) -> Response {
+    let headers_str = format!("here are the header: {:?}", headers);
+
+    let authorization = headers.get("Authorization");
+
+    if authorization.is_none() {
+        log::error!("Authorization not found");
+
+        return ServerError::Unauthorized("Not authorized. token not found".to_string())
+            .into_response();
+    }
+    log::info!("header msg: {}", headers_str);
+
     ws.on_upgrade(|socket| socket::handle_socket(socket, state))
 }
 
