@@ -1,19 +1,18 @@
-use crate::socket;
+use crate::{server_errors, socket};
 
 use anyhow::{anyhow, Result};
 
+use crate::application_factory;
 use crate::room;
 use axum::{
     extract::{ws::WebSocketUpgrade, State},
-    http::{header::HeaderMap, Request, StatusCode},
+    http::HeaderMap,
     response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::sync::{Arc, Mutex};
-use thiserror::Error;
 
 #[derive(Debug, Serialize, Clone)]
 struct ServerResponse<T> {
@@ -22,74 +21,10 @@ struct ServerResponse<T> {
     code: u32,
 }
 
-#[derive(Debug, Serialize, Clone)]
-struct ServerErrorResponse {
-    message: String,
-    error: ServerError,
-    code: u32,
-}
-
-#[derive(Debug, Error, Serialize, Clone)]
-enum ServerError {
-    #[error("UnAuthorized: `{0}`")]
-    Unauthorized(String),
-
-    #[error("Bad Request: `{0}`")]
-    BadRequest(String),
-
-    #[error("Internal Error: `{0}`")]
-    Internal(String),
-}
-
-impl From<ServerError> for ServerErrorResponse {
-    fn from(value: ServerError) -> ServerErrorResponse {
-        match value {
-            ServerError::Unauthorized(_) => ServerErrorResponse {
-                message: "Unauthorized".to_string(),
-                code: 401u32,
-                error: value,
-            },
-            ServerError::BadRequest(_) => ServerErrorResponse {
-                message: "Bad Request".to_string(),
-                code: 400u32,
-                error: value,
-            },
-            ServerError::Internal(_) => ServerErrorResponse {
-                message: "Internal server error".to_string(),
-                code: 500u32,
-                error: value,
-            },
-        }
-    }
-}
-
-impl IntoResponse for ServerError {
-    fn into_response(self) -> Response {
-        match self {
-            Self::Unauthorized(_) => (
-                StatusCode::UNAUTHORIZED,
-                Json(ServerErrorResponse::from(self)),
-            )
-                .into_response(),
-            Self::BadRequest(_) => (
-                StatusCode::BAD_REQUEST,
-                Json(ServerErrorResponse::from(self)),
-            )
-                .into_response(),
-            _ => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ServerErrorResponse::from(ServerError::Internal(
-                    "Internal server error. Check  logs".to_string(),
-                ))),
-            )
-                .into_response(),
-        }
-    }
-}
-
 pub struct Server {
     pub sockets: Vec<socket::AppSocket>,
     pub rooms: Vec<room::Room>,
+    pub factory: application_factory::ApplicationFactory,
 }
 
 impl Server {
@@ -184,9 +119,12 @@ pub async fn handler(
     if authorization.is_none() {
         log::error!("Authorization not found");
 
-        return ServerError::Unauthorized("Not authorized. token not found".to_string())
-            .into_response();
+        return server_errors::ServerError::Unauthorized(
+            "Not authorized. token not found".to_string(),
+        )
+        .into_response();
     }
+
     log::info!("header msg: {}", headers_str);
 
     ws.on_upgrade(|socket| socket::handle_socket(socket, state))
@@ -194,9 +132,14 @@ pub async fn handler(
 
 pub async fn server(address: &str) -> Result<tokio::task::JoinHandle<()>> {
     //
+    //
+
+    let factory = application_factory::ApplicationFactory::new().await;
+
     let app_state = Arc::new(Mutex::new(Server {
         sockets: Vec::new(),
         rooms: Vec::new(),
+        factory,
     }));
 
     let app = Router::new()
