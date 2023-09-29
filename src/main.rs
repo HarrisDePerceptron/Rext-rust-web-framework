@@ -44,18 +44,41 @@ async fn main() -> Result<()> {
 
     let u_req = user::UserRequest {
         name: Some("harris".to_string()),
-        password: "123".to_string(),
-        email: "harris.perceptron@gmail.com".to_string(),
+        password: "12345".to_string(),
+        email: "harris2.perceptron@gmail.com".to_string(),
     };
 
-    let fac = application_factory::ApplicationFactory::new().await;
-    let fac = Arc::new(Mutex::new(fac));
+    let mut fac = application_factory::ApplicationFactory::new();
+    fac.mongo_provider.connect().await?;
 
-    let mut dao = user::UserDao::new(fac);
-    let result = dao.create_user(u_req).await?;
+    let fac = Arc::new(fac);
 
-    log::info!("User is created: {:?}", result);
+    let mut dao = user::UserDao::new(fac).await?;
 
+    //for i in 0..20 {
+    //    //
+    //    let email = format!("harris{}.perceptron@gmail.com", i);
+    //    let ureq = user::UserRequest {
+    //        name: None,
+    //        password: "123456".to_string(),
+    //        email,
+    //    };
+
+    //    dao.create_user(ureq).await?;
+    //}
+
+    //let result = dao.create_user(u_req).await?;
+
+    //log::info!("User created: {:?}", result);
+    let mut uu = dao.get_user("6516c5511a81ede030f839c4").await?;
+    uu.name = Some("muhammad harris".to_string());
+
+    dao.update_user(&uu).await?;
+
+    //log::info!("User search: {:?}", uu);
+
+    let all_users = dao.list_users(2, 10).await?;
+    log::info!("Users data: {:?}", all_users);
     let handler = server::server(&address).await?;
 
     log::info!("Server started");

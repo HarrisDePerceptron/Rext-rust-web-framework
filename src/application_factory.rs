@@ -4,35 +4,16 @@ use crate::secrets;
 use anyhow::Result;
 
 pub struct ApplicationFactory {
-    pub client: mongodb::Client,
-    pub mongo_uri: String,
-    pub mongo_database: String,
+    pub mongo_provider: MongoProvider,
 }
 
 impl ApplicationFactory {
-    pub async fn new() -> Self {
+    pub fn new() -> Self {
         let mongo_uri = secrets::MONGO_URI.to_string();
         let mongo_database = secrets::MONGO_DATABASE.to_string();
 
-        let mongo_provider = MongoProvider::new(&mongo_uri);
-        let client = mongo_provider
-            .connect()
-            .await
-            .expect(&format!("Unable to connect to {}", mongo_uri));
+        let mongo_provider = MongoProvider::new(&mongo_uri, &mongo_database);
 
-        Self {
-            mongo_database,
-            client,
-            mongo_uri,
-        }
-    }
-
-    pub fn get_client(&self) -> mongodb::Client {
-        self.client.clone()
-    }
-
-    pub fn get_database(&self) -> mongodb::Database {
-        let db = self.client.database(&self.mongo_database);
-        db
+        Self { mongo_provider }
     }
 }
