@@ -131,10 +131,7 @@ pub async fn handler(
 }
 
 pub async fn server(address: &str) -> Result<tokio::task::JoinHandle<()>> {
-    //
-    //
-
-    let factory = application_factory::ApplicationFactory::new();
+    let factory = application_factory::ApplicationFactory::new().await?;
 
     let app_state = Arc::new(Mutex::new(Server {
         sockets: Vec::new(),

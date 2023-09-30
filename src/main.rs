@@ -8,12 +8,14 @@ use axum_test::server;
 
 use axum_test::auth;
 use axum_test::secrets;
-use axum_test::user;
 use dotenv::dotenv;
 
 use axum_test::application_factory;
-use axum_test::user::UserPersist;
 use tokio::sync::Mutex;
+
+use axum_test::services::dao::Dao;
+use axum_test::services::user;
+use axum_test::services::user::UserPersist;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -42,43 +44,29 @@ async fn main() -> Result<()> {
 
     log::info!("Token is: {}", token);
 
-    let u_req = user::UserRequest {
-        name: Some("harris".to_string()),
-        password: "12345".to_string(),
-        email: "harris2.perceptron@gmail.com".to_string(),
-    };
+    let uu = user::User::new(
+        "harris.perceptron@gmail.com",
+        "12345",
+        Some("harris".to_string()),
+    )?;
 
-    let mut fac = application_factory::ApplicationFactory::new();
-    fac.mongo_provider.connect().await?;
+    let mut fac = application_factory::ApplicationFactory::new().await?;
 
     let fac = Arc::new(fac);
 
-    let mut dao = user::UserDao::new(fac).await?;
+    let dao = user::UserDao::new(fac.clone()).await?;
 
-    //for i in 0..20 {
-    //    //
-    //    let email = format!("harris{}.perceptron@gmail.com", i);
-    //    let ureq = user::UserRequest {
-    //        name: None,
-    //        password: "123456".to_string(),
-    //        email,
-    //    };
+    let uuu = dao.find_by_email("harris0.perceptron@gmail.com").await?;
 
-    //    dao.create_user(ureq).await?;
-    //}
+    let tok = uuu.create_token()?;
 
-    //let result = dao.create_user(u_req).await?;
+    log::info!("User token: {}", tok);
 
-    //log::info!("User created: {:?}", result);
-    let mut uu = dao.get_user("6516c5511a81ede030f839c4").await?;
-    uu.name = Some("muhammad harris".to_string());
+    let ddao = user::user_dao1::User1Dao::new(fac);
 
-    dao.update_user(&uu).await?;
+    let reees = ddao.list(1, 10).await?;
+    log::info!("Listing meoww: {:?}", reees);
 
-    //log::info!("User search: {:?}", uu);
-
-    let all_users = dao.list_users(2, 10).await?;
-    log::info!("Users data: {:?}", all_users);
     let handler = server::server(&address).await?;
 
     log::info!("Server started");

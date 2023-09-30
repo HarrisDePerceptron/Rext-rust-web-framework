@@ -5,8 +5,8 @@ pub mod room;
 pub mod secrets;
 pub mod server;
 pub mod server_errors;
+pub mod services;
 pub mod socket;
-pub mod user;
 pub mod utils;
 
 pub fn hello() {

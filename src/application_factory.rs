@@ -8,12 +8,14 @@ pub struct ApplicationFactory {
 }
 
 impl ApplicationFactory {
-    pub fn new() -> Self {
+    pub async fn new() -> Result<Self> {
         let mongo_uri = secrets::MONGO_URI.to_string();
         let mongo_database = secrets::MONGO_DATABASE.to_string();
 
-        let mongo_provider = MongoProvider::new(&mongo_uri, &mongo_database);
+        let mut mongo_provider = MongoProvider::new(&mongo_uri, &mongo_database);
 
-        Self { mongo_provider }
+        mongo_provider.connect().await?;
+
+        Ok(Self { mongo_provider })
     }
 }
