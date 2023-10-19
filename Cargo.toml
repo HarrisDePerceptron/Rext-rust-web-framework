@@ -25,6 +25,9 @@ once_cell = "1.17.1"
 dotenv = "0.15.0"
 mongodb = { version = "2.5.0", features = ["tokio-runtime"] }
 async-trait = "0.1.73"
+chrono = { version = "0.4.31", features = ["serde"] }
+bson = { version = "2.7.0", features = ["chrono-0_4"] }
+strum = { version = "0.25", features = ["derive"] }
 
 [lib]
 name = "axum_test"

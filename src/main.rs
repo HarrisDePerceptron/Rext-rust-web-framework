@@ -13,9 +13,15 @@ use dotenv::dotenv;
 use axum_test::application_factory;
 use tokio::sync::Mutex;
 
-use axum_test::services::dao::Dao;
+use axum_test::services::dao::DaoObj;
+use axum_test::services::dto;
 use axum_test::services::user;
 use axum_test::services::user::UserPersist;
+
+use axum_test::services::application_dao;
+
+use anyhow::anyhow as error;
+use axum_test::services::service;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -44,28 +50,34 @@ async fn main() -> Result<()> {
 
     log::info!("Token is: {}", token);
 
-    let uu = user::User::new(
-        "harris.perceptron@gmail.com",
-        "12345",
-        Some("harris".to_string()),
-    )?;
+    let uu = user::User::new("harris.perceptron@gmail.com", "12345")?;
 
     let mut fac = application_factory::ApplicationFactory::new().await?;
 
     let fac = Arc::new(fac);
 
-    let dao = user::UserDao::new(fac.clone()).await?;
+    //let dao = user::UserDao::new(fac.clone()).await?;
 
-    let uuu = dao.find_by_email("harris0.perceptron@gmail.com").await?;
+    let app_dao = application_dao::APPLICATION_DAO.get_or_init(|| {
+        application_dao::ApplicationDao::new(fac.clone())
+            .expect("Application dao unable to initialze")
+    });
 
-    let tok = uuu.create_token()?;
+    let app_dao = application_dao::APPLICATION_DAO
+        .get()
+        .ok_or(error!("Application dao was not initialized"))?;
 
-    log::info!("User token: {}", tok);
+    let dao = app_dao.user.clone();
 
-    let ddao = user::user_dao1::User1Dao::new(fac);
+    let ser = service::Service::new(dao.clone());
+    let res = ser.get("6516c5511a81ede030f839c4").await?;
 
-    let reees = ddao.list(1, 10).await?;
-    log::info!("Listing meoww: {:?}", reees);
+    log::info!("Got result: {:?}", res);
+    let res2 = ser.list(1, 10).await?;
+    log::info!("List result: {:?}", res2);
+
+    let res = dao.find_by_email("harris100.perceptron@gmail.com").await?;
+    println!("find by email result: {:?}", res);
 
     let handler = server::server(&address).await?;
 
