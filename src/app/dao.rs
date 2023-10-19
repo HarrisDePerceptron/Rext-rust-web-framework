@@ -2,16 +2,14 @@ use crate::application_factory::ApplicationFactory;
 use std::{convert::From, fmt::Debug};
 
 use anyhow::{anyhow as error, Result};
-use async_trait::async_trait;
-use futures::{StreamExt, TryStream};
+use futures::StreamExt;
 use mongodb::bson::{doc, oid::ObjectId};
 use std::sync::Arc;
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use std::str::FromStr;
 
-use crate::services::dto::DTO;
-use std::ops::{Deref, DerefMut};
+use crate::app::dto::DTO;
 
 pub struct DaoObj<T> {
     factory: Option<Arc<ApplicationFactory>>,
@@ -50,13 +48,20 @@ where
         Ok(self.collection.clone())
     }
 
-    pub async fn create(&self, data: DTO<T>) -> Result<DTO<T>> {
+    pub async fn create(&self, mut data: DTO<T>) -> Result<DTO<T>> {
         let col = self.get_collection()?;
         //let item = Output::from(self);
 
         //col.insert_one(item.clone(), None).await?;
 
-        col.insert_one(data.clone(), None).await?;
+        let res = col.insert_one(data.clone(), None).await?;
+        let id = res
+            .inserted_id
+            .as_object_id()
+            .ok_or(error!("Unable to convert to object id"))?
+            .to_string();
+        data.id = Some(id);
+
         Ok(data)
     }
     pub async fn get(&self, id: &str) -> Result<DTO<T>> {

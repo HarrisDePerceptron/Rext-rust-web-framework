@@ -1,8 +1,8 @@
-use crate::services::dao::DaoObj;
+use crate::app::dao::DaoObj;
 
 use std::sync::Arc;
 
-use crate::services::dto::DTO;
+use crate::app::dto::DTO;
 use anyhow::Result;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 

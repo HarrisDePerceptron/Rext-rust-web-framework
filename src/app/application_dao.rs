@@ -1,10 +1,10 @@
+use crate::app::collections::Collections;
+use crate::app::dao::DaoObj;
 use crate::application_factory::ApplicationFactory;
-use crate::services::collections::Collections;
-use crate::services::dao::DaoObj;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use crate::services::user::user_model::User;
+use crate::app::user::user_model::User;
 use anyhow::Result;
 
 pub struct ApplicationDao {
@@ -22,4 +22,4 @@ impl ApplicationDao {
     }
 }
 
-pub static APPLICATION_DAO: OnceLock<ApplicationDao> = OnceLock::new();
+pub static APPLICATION_DAO: OnceLock<Arc<ApplicationDao>> = OnceLock::new();

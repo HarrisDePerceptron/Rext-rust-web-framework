@@ -4,6 +4,8 @@ use std::sync::Arc;
 use anyhow::Result;
 //use thiserror::Error;
 
+use axum_test::app::application_service;
+use axum_test::app::user::User;
 use axum_test::server;
 
 use axum_test::auth;
@@ -13,15 +15,13 @@ use dotenv::dotenv;
 use axum_test::application_factory;
 use tokio::sync::Mutex;
 
-use axum_test::services::dao::DaoObj;
-use axum_test::services::dto;
-use axum_test::services::user;
-use axum_test::services::user::UserPersist;
+use axum_test::app::dao::DaoObj;
+use axum_test::app::dto;
+use axum_test::app::user;
 
-use axum_test::services::application_dao;
+use axum_test::app::application_dao;
 
 use anyhow::anyhow as error;
-use axum_test::services::service;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -59,25 +59,35 @@ async fn main() -> Result<()> {
     //let dao = user::UserDao::new(fac.clone()).await?;
 
     let app_dao = application_dao::APPLICATION_DAO.get_or_init(|| {
-        application_dao::ApplicationDao::new(fac.clone())
-            .expect("Application dao unable to initialze")
+        Arc::new(
+            application_dao::ApplicationDao::new(fac.clone())
+                .expect("Application dao unable to initialze"),
+        )
     });
 
     let app_dao = application_dao::APPLICATION_DAO
         .get()
         .ok_or(error!("Application dao was not initialized"))?;
 
-    let dao = app_dao.user.clone();
+    let app_service = application_service::APPLICATION_SERVICE.get_or_init(|| {
+        Arc::new(
+            application_service::ApplicationService::new(app_dao.clone())
+                .expect("Unable to init application factory"),
+        )
+    });
 
-    let ser = service::Service::new(dao.clone());
-    let res = ser.get("6516c5511a81ede030f839c4").await?;
+    let res = app_service
+        .user
+        .find_by_email("harris0.perceptron@gmail.com")
+        .await?;
+    println!("Service find by email: {:?}", res);
 
-    log::info!("Got result: {:?}", res);
-    let res2 = ser.list(1, 10).await?;
-    log::info!("List result: {:?}", res2);
+    let res2 = app_service
+        .user
+        .create(User::new("harris.perceptron102@gmail.com", "123456")?)
+        .await?;
 
-    let res = dao.find_by_email("harris100.perceptron@gmail.com").await?;
-    println!("find by email result: {:?}", res);
+    println!("Created user: {:?}", res2);
 
     let handler = server::server(&address).await?;
 

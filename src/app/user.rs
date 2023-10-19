@@ -3,3 +3,5 @@ pub mod user_model;
 
 pub use user_dao::*;
 pub use user_model::*;
+
+pub mod user_service;
