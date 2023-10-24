@@ -22,8 +22,8 @@ use axum_test::app::application_dao;
 
 use anyhow::anyhow as error;
 
-use axum_test::app::dao_t::DaoObj;
-use axum_test::app::service_t::Service;
+use axum_test::app::dao::DaoObj;
+use axum_test::app::service::Service;
 
 #[tokio::main]
 async fn main() -> Result<()> {

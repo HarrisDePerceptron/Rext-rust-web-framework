@@ -1,4 +1,6 @@
-use crate::{server_errors, socket};
+use crate::server_errors;
+
+use crate::websocket::socket;
 
 use axum::{
     extract::{ws::WebSocketUpgrade, State},
@@ -9,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::websocket::websocket_server::WebsocketServer;
 
-pub async fn handler(
+pub async fn websocket_handler(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
     State(state): State<Arc<Mutex<WebsocketServer>>>,

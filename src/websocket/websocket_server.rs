@@ -1,9 +1,9 @@
-use crate::socket;
+use crate::websocket::socket;
 
 use anyhow::{anyhow, Result};
 
 use crate::application_factory;
-use crate::room;
+use crate::websocket::room;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Clone)]

@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::socket;
+use crate::websocket::socket;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

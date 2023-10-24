@@ -24,7 +24,9 @@ use futures::{
 };
 use tokio::sync::mpsc;
 
-use crate::room;
+use crate::websocket::websocket_server::WebsocketServer;
+
+use crate::websocket::room;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomMessage {
@@ -50,7 +52,7 @@ pub struct AppSocketResv {
     pub socket: mpsc::Receiver<String>,
 }
 
-pub async fn handle_socket(socket: WebSocket, state: Arc<Mutex<server::Server>>) {
+pub async fn handle_socket(socket: WebSocket, state: Arc<Mutex<WebsocketServer>>) {
     log::info!("Socket connected!!");
 
     let (sender, resv) = socket.split();
@@ -76,7 +78,7 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<Mutex<server::Server>>)
     tokio::spawn(write(sender, app_socket_resc));
 }
 
-pub async fn broadcast(msg: &str, state: Arc<Mutex<server::Server>>) {
+pub async fn broadcast(msg: &str, state: Arc<Mutex<WebsocketServer>>) {
     //
     let sockets = state.lock().unwrap().sockets.clone();
     for soc in &sockets {
@@ -87,7 +89,7 @@ pub async fn broadcast(msg: &str, state: Arc<Mutex<server::Server>>) {
 pub async fn read(
     mut receiver: SplitStream<WebSocket>,
     client_id: String,
-    state: Arc<Mutex<server::Server>>,
+    state: Arc<Mutex<WebsocketServer>>,
 ) -> Result<()> {
     while let Some(Ok(msg)) = receiver.next().await {
         if let Message::Text(msg) = msg {
