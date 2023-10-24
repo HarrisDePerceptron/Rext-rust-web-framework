@@ -9,6 +9,8 @@ pub mod server_errors;
 pub mod socket;
 pub mod utils;
 
+pub mod websocket;
+
 pub fn hello() {
     println!("hello world. axum test");
 }

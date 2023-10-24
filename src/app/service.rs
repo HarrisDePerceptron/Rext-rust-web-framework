@@ -1,4 +1,6 @@
-use crate::app::dao::DaoObj;
+//use crate::app::dao::DaoObj;
+
+use crate::app::dao_t::DaoObj;
 
 use std::sync::Arc;
 
@@ -6,23 +8,16 @@ use crate::app::dto::DTO;
 use anyhow::Result;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-pub struct Service<T> {
-    dao: Arc<DaoObj<T>>,
-}
+use async_trait::async_trait;
 
-impl<T> Service<T>
+#[async_trait]
+pub trait Service<T>
 where
-    T: Clone + Serialize + DeserializeOwned + 'static,
+    T: Clone + Serialize + DeserializeOwned + 'static + std::marker::Send + std::marker::Sync,
 {
-    pub fn new(dao: Arc<DaoObj<T>>) -> Self {
-        Self { dao }
-    }
+    fn get_dao(&self) -> Arc<dyn DaoObj<T>>;
 
-    pub fn get_dao(&self) -> Arc<DaoObj<T>> {
-        self.dao.clone()
-    }
-
-    pub async fn create(&self, data: T) -> Result<DTO<T>> {
+    async fn create(&self, data: T) -> Result<DTO<T>> {
         let data = DTO::new(data);
         let dao = self.get_dao();
         let result = dao.create(data).await?;
@@ -30,28 +25,28 @@ where
         Ok(result)
     }
 
-    pub async fn get(&self, id: &str) -> Result<DTO<T>> {
+    async fn get(&self, id: &str) -> Result<DTO<T>> {
         let dao = self.get_dao();
         let result = dao.get(id).await?;
 
         Ok(result)
     }
 
-    pub async fn list(&self, page: u64, page_size: i64) -> Result<Vec<DTO<T>>> {
+    async fn list(&self, page: u64, page_size: i64) -> Result<Vec<DTO<T>>> {
         let dao = self.get_dao();
         let result = dao.list(page, page_size).await?;
 
         Ok(result)
     }
 
-    pub async fn delete(&self, id: &str) -> Result<()> {
+    async fn delete(&self, id: &str) -> Result<()> {
         let dao = self.get_dao();
         dao.delete(id).await?;
 
         Ok(())
     }
 
-    pub async fn update(&self, data: DTO<T>) -> Result<DTO<T>> {
+    async fn update(&self, data: DTO<T>) -> Result<DTO<T>> {
         let dao = self.get_dao();
         let result = dao.update(data).await?;
         Ok(result)

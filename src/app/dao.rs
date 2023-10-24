@@ -10,45 +10,35 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::str::FromStr;
 
 use crate::app::dto::DTO;
+use async_trait::async_trait;
 
-pub struct DaoObj<T> {
-    factory: Option<Arc<ApplicationFactory>>,
+//pub struct DaoObj<T> {
+//    factory: Option<Arc<ApplicationFactory>>,
+//
+//    collection_name: String,
+//    collection: mongodb::Collection<DTO<T>>,
+//}
 
-    collection_name: String,
-    collection: mongodb::Collection<DTO<T>>,
-}
-
-impl<T> DaoObj<T>
+#[async_trait]
+pub trait DaoObj<T>: Send + Sync
 where
-    T: Clone + Serialize + DeserializeOwned + 'static,
+    T: Clone + Serialize + DeserializeOwned + 'static + std::marker::Send + std::marker::Sync,
 {
-    pub fn new(collection_name: &str, factory: Arc<ApplicationFactory>) -> Result<Self> {
-        let col = factory
+    fn get_factory(&self) -> Arc<ApplicationFactory>;
+
+    fn get_collection_name(&self) -> &str;
+
+    fn get_collection(&self) -> Result<mongodb::Collection<DTO<T>>> {
+        let col = self
+            .get_factory()
             .mongo_provider
             .get_database()?
-            .collection::<DTO<T>>(collection_name);
-        Ok(Self {
-            factory: Some(factory),
-            collection_name: collection_name.to_string(),
-            collection: col,
-        })
+            .collection::<DTO<T>>(self.get_collection_name());
+
+        Ok(col)
     }
 
-    fn get_factory(&self) -> Arc<ApplicationFactory> {
-        self.factory
-            .clone()
-            .expect("Factory should have been initialzed form new")
-            .clone()
-    }
-    fn get_collection_name(&self) -> &str {
-        &self.collection_name
-    }
-
-    pub fn get_collection(&self) -> Result<mongodb::Collection<DTO<T>>> {
-        Ok(self.collection.clone())
-    }
-
-    pub async fn create(&self, mut data: DTO<T>) -> Result<DTO<T>> {
+    async fn create(&self, mut data: DTO<T>) -> Result<DTO<T>> {
         let col = self.get_collection()?;
         //let item = Output::from(self);
 
@@ -64,7 +54,7 @@ where
 
         Ok(data)
     }
-    pub async fn get(&self, id: &str) -> Result<DTO<T>> {
+    async fn get(&self, id: &str) -> Result<DTO<T>> {
         let col = self.get_collection()?;
         let oid = ObjectId::from_str(id)?;
         let res = col.find(doc! {"_id": oid}, None).await?;
@@ -72,7 +62,7 @@ where
         Ok(output)
     }
 
-    pub async fn update(&self, data: DTO<T>) -> Result<DTO<T>> {
+    async fn update(&self, data: DTO<T>) -> Result<DTO<T>> {
         let col = self.get_collection()?;
         let id = data
             .id
@@ -88,7 +78,7 @@ where
         Ok(data)
     }
 
-    pub async fn list(&self, page: u64, page_size: i64) -> Result<Vec<DTO<T>>> {
+    async fn list(&self, page: u64, page_size: i64) -> Result<Vec<DTO<T>>> {
         let col = self.get_collection()?;
         let mut opt = mongodb::options::FindOptions::default();
 
@@ -106,7 +96,7 @@ where
         Ok(data)
     }
 
-    pub async fn delete(&self, id: &str) -> Result<()> {
+    async fn delete(&self, id: &str) -> Result<()> {
         let col = self.get_collection()?;
         let oid = ObjectId::from_str(id)?;
         col.delete_one(doc! {"_id": oid}, None).await?;

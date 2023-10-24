@@ -15,13 +15,15 @@ use dotenv::dotenv;
 use axum_test::application_factory;
 use tokio::sync::Mutex;
 
-use axum_test::app::dao::DaoObj;
 use axum_test::app::dto;
 use axum_test::app::user;
 
 use axum_test::app::application_dao;
 
 use anyhow::anyhow as error;
+
+use axum_test::app::dao_t::DaoObj;
+use axum_test::app::service_t::Service;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -81,13 +83,6 @@ async fn main() -> Result<()> {
         .find_by_email("harris0.perceptron@gmail.com")
         .await?;
     println!("Service find by email: {:?}", res);
-
-    let res2 = app_service
-        .user
-        .create(User::new("harris.perceptron102@gmail.com", "123456")?)
-        .await?;
-
-    println!("Created user: {:?}", res2);
 
     let handler = server::server(&address).await?;
 
