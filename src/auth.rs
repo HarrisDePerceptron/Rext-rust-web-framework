@@ -11,6 +11,8 @@ use argon2::{
     Argon2,
 };
 
+use anyhow::{anyhow as error, Result};
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct JWTClaims {
     pub exp: usize, // Required (validate_exp defaults to true in validation). Expiration time (as UTC timestamp)
@@ -19,14 +21,14 @@ pub struct JWTClaims {
     pub sub: String, // Optional. Subject (whom token refers to)
 }
 
-pub fn generate_token(subject: &str, issuer: &str, expiry_days: u64) -> Result<String, String> {
+pub fn generate_token(subject: &str, issuer: &str, expiry_days: u64) -> Result<String> {
     let utils::SECONDS(elasped) = match utils::get_current_timestamp() {
-        Err(e) => return Err(e),
+        Err(e) => return Err(error!("{}", e.to_string())),
         Ok(v) => v,
     };
 
     let elasped = match usize::try_from(elasped) {
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(error!("{}", e.to_string())),
         Ok(v) => v,
     };
 
@@ -34,7 +36,7 @@ pub fn generate_token(subject: &str, issuer: &str, expiry_days: u64) -> Result<S
     let seconds_total: u64 = seconds_in_day * expiry_days;
 
     let seconds_total = match usize::try_from(seconds_total) {
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(error!("{}", e.to_string())),
         Ok(v) => v,
     };
 
@@ -52,28 +54,28 @@ pub fn generate_token(subject: &str, issuer: &str, expiry_days: u64) -> Result<S
         &claim,
         &EncodingKey::from_secret(secrets::SESSION_KEY.as_ref()),
     ) {
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(error!("{}", e.to_string())),
         Ok(v) => v,
     };
 
-    return Ok(token);
+    Ok(token)
 }
 
-pub fn decode_token(token: String) -> Result<JWTClaims, String> {
+pub fn decode_token(token: String) -> Result<JWTClaims> {
     let token = match decode::<JWTClaims>(
         &token,
         &DecodingKey::from_secret(secrets::SESSION_KEY.as_ref()),
         &Validation::default(),
     ) {
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(error!("Unable to decode token: {}", e.to_string())),
         Ok(v) => v,
     };
 
     let result = token.claims;
-    return Ok(result);
+    Ok(result)
 }
 
-pub fn verify_token(token: &str) -> Result<bool, String> {
+pub fn verify_token(token: &str) -> Result<bool> {
     let mut validation = Validation::default();
     validation.validate_exp = true;
     validation.insecure_disable_signature_validation();
@@ -82,13 +84,13 @@ pub fn verify_token(token: &str) -> Result<bool, String> {
 
     let _data = match decode::<JWTClaims>(token, &dummy_key, &validation) {
         Ok(v) => v,
-        Err(e) => return Err(e.to_string()),
+        Err(e) => return Err(error!("Unable to decode token: {}", e.to_string())),
     };
 
-    return Ok(true);
+    Ok(true)
 }
 
-pub fn hash_password(phrase: &str) -> Result<String, String> {
+pub fn hash_password(phrase: &str) -> Result<String> {
     let password = phrase.as_bytes();
 
     let salt = SaltString::generate(&mut OsRng);
@@ -99,10 +101,10 @@ pub fn hash_password(phrase: &str) -> Result<String, String> {
     // Hash password to PHC string ($argon2id$v=19$...)
     let password_hash = argon2
         .hash_password(password, &salt)
-        .map_err(|e| e.to_string())?
+        .map_err(|e| error!("{}", e.to_string()))?
         .to_string();
 
-    return Ok(password_hash);
+    Ok(password_hash)
 }
 
 pub fn verify_password_hash(phrase: &str, hash: &str) -> Option<bool> {

@@ -17,7 +17,10 @@ use axum::{
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-use crate::server;
+use crate::{
+    app::{dto::DTO, user::User},
+    server,
+};
 use futures::{
     sink::SinkExt,
     stream::{SplitSink, SplitStream, StreamExt},
@@ -26,25 +29,14 @@ use tokio::sync::mpsc;
 
 use crate::websocket::websocket_server::WebsocketServer;
 
+use crate::websocket::messages;
 use crate::websocket::room;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RoomMessage {
-    pub message: String,
-    pub room: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Command {
-    JOIN(String),
-    LEAVE(String),
-    MESSAGE(RoomMessage),
-}
 
 #[derive(Clone, Debug)]
 pub struct AppSocket {
     pub id: String,
     pub socket: mpsc::Sender<String>,
+    pub user: Option<DTO<User>>,
 }
 
 pub struct AppSocketResv {
@@ -52,7 +44,11 @@ pub struct AppSocketResv {
     pub socket: mpsc::Receiver<String>,
 }
 
-pub async fn handle_socket(socket: WebSocket, state: Arc<Mutex<WebsocketServer>>) {
+pub async fn handle_socket(
+    socket: WebSocket,
+    state: Arc<Mutex<WebsocketServer>>,
+    user: Option<DTO<User>>,
+) {
     log::info!("Socket connected!!");
 
     let (sender, resv) = socket.split();
@@ -63,6 +59,7 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<Mutex<WebsocketServer>>
     let app_socket = AppSocket {
         id: id.to_string(),
         socket: tx.clone(),
+        user,
     };
 
     let app_socket_resc = AppSocketResv {
@@ -74,8 +71,8 @@ pub async fn handle_socket(socket: WebSocket, state: Arc<Mutex<WebsocketServer>>
         state.lock().unwrap().sockets.push(app_socket.clone());
     }
 
-    tokio::spawn(read(resv, id, state.clone()));
-    tokio::spawn(write(sender, app_socket_resc));
+    tokio::spawn(read(resv, id.to_string(), state.clone()));
+    tokio::spawn(write(sender, app_socket_resc, id, state.clone()));
 }
 
 pub async fn broadcast(msg: &str, state: Arc<Mutex<WebsocketServer>>) {
@@ -93,62 +90,22 @@ pub async fn read(
 ) -> Result<()> {
     while let Some(Ok(msg)) = receiver.next().await {
         if let Message::Text(msg) = msg {
-            log::info!("Got message: {}: {}", client_id, msg);
-
-            let command: Command = match serde_json::from_str(&msg) {
-                Ok(v) => v,
-                Err(e) => {
-                    log::error!("Command deserialzation error: {}", e.to_string());
-                    continue;
-                }
+            if let Err(e) = messages::parse_text_messages(msg, &client_id, state.clone()).await {
+                log::error!("Parse message error: {}", e.to_string());
             };
-            match command {
-                Command::JOIN(v) => {
-                    if let Ok(mut s) = state.lock() {
-                        let client = s.get_client(&client_id);
-                        if let Some(client) = client {
-                            s.join_room(&v, client);
+        } else if let Message::Close(c) = msg {
+            let mut msg = String::from("Unknown reason for closing");
 
-                            log::info!("Joined room {} with client id {}", v, client_id);
-                        }
-                    }
-                }
-                Command::LEAVE(v) => {
-                    println!("wants to leave {}", v);
+            if let Some(f) = c {
+                msg = format!("Closing... code: {},  reason: {}", f.code, f.reason);
+            }
 
-                    if let Ok(mut state) = state.lock() {
-                        match state.leave_room(&v, &client_id) {
-                            Ok(_) => {
-                                log::info!("Client {} left room {}", client_id, v);
-                            }
-                            Err(e) => {
-                                log::error!("{}", e.to_string());
-                                continue;
-                            }
-                        };
-                    }
-                }
-                Command::MESSAGE(v) => {
-                    let mut room: Option<room::Room> = None;
-
-                    if let Ok(mut state) = state.lock() {
-                        room = state.get_room(&v.room);
-                    }
-
-                    if let Some(room) = room {
-                        if let Err(e) = room.send(&v.message).await {
-                            log::error!(
-                                "Got error while sending message '{}' to room '{}': {}",
-                                v.message,
-                                v.room,
-                                e.to_string()
-                            )
-                        }
-                    } else {
-                        log::error!("room {} not found", v.room)
-                    }
-                }
+            if let Err(e) = messages::parse_close_messages(&msg, &client_id, state.clone()).await {
+                log::error!("Close message error: {}", e.to_string());
             };
+
+            //Break the loop since we received a close connection
+            break;
         } else {
             continue;
         }
@@ -157,9 +114,42 @@ pub async fn read(
     Ok(())
 }
 
-pub async fn write(mut sender: SplitSink<WebSocket, Message>, mut app_socket_resv: AppSocketResv) {
+pub async fn write(
+    mut sender: SplitSink<WebSocket, Message>,
+    mut app_socket_resv: AppSocketResv,
+    client_id: String,
+    state: Arc<Mutex<WebsocketServer>>,
+) {
     //
+
     while let Some(msg) = app_socket_resv.socket.recv().await {
-        sender.send(Message::Text(msg.to_string())).await.unwrap();
+        log::info!("Resvc message to send: {}", msg);
+
+        if msg == messages::SocketMessages::SocketClose.to_string() {
+            match sender.close().await {
+                Ok(_) => (),
+                Err(e) => {
+                    log::error!("Failed to close connection: {}", e.to_string());
+                }
+            }
+
+            if let Ok(mut state) = state.lock() {
+                match state.remove_client_server(&client_id) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        log::error!("Removing client from server error: {}", e.to_string());
+                    }
+                }
+            }
+            break;
+        }
+
+        match sender.send(Message::Text(msg.to_string())).await {
+            Ok(_) => (),
+            Err(e) => {
+                log::error!("Socket client message send error: {}", e.to_string());
+                continue;
+            }
+        };
     }
 }

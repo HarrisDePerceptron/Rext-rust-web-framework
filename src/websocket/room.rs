@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use crate::websocket::socket;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow as error, Result};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
@@ -34,18 +34,24 @@ impl Room {
         Ok(())
     }
 
-    pub fn add_client(&mut self, client: socket::AppSocket) {
+    pub fn add_client(&mut self, client: socket::AppSocket) -> Result<()> {
         //
+        //
+
+        let result: Vec<&socket::AppSocket> =
+            self.sockets.iter().filter(|e| e.id == client.id).collect();
+
+        if !result.is_empty() {
+            return Err(error!("Client already exists in room"));
+        }
+
         self.sockets.push(client);
+
+        Ok(())
     }
 
     pub fn remove_client(&mut self, id: &str) -> Result<()> {
-        let index = self
-            .sockets
-            .iter()
-            .position(|x| x.id == id)
-            .ok_or(anyhow!("Client id {} not found", id))?;
-        self.sockets.remove(index);
+        self.sockets.retain(|e| e.id != id);
 
         Ok(())
     }

@@ -3,7 +3,9 @@ use std::{convert::From, fmt::Debug};
 
 use anyhow::{anyhow as error, Result};
 use futures::StreamExt;
-use mongodb::bson::{doc, oid::ObjectId};
+use mongodb::bson::{doc, oid::ObjectId, Document};
+use mongodb::options::FindOptions;
+
 use std::sync::Arc;
 
 use serde::{de::DeserializeOwned, Serialize};
@@ -27,6 +29,10 @@ where
     fn get_factory(&self) -> Arc<ApplicationFactory>;
 
     fn get_collection_name(&self) -> &str;
+
+    async fn init(&self) -> Result<()> {
+        Ok(())
+    }
 
     fn get_collection(&self) -> Result<mongodb::Collection<DTO<T>>> {
         let col = self
@@ -57,9 +63,13 @@ where
     async fn get(&self, id: &str) -> Result<DTO<T>> {
         let col = self.get_collection()?;
         let oid = ObjectId::from_str(id)?;
-        let res = col.find(doc! {"_id": oid}, None).await?;
-        let output = res.deserialize_current()?;
-        Ok(output)
+        let mut res = col.find(doc! {"_id": oid}, None).await?;
+        let result = res
+            .next()
+            .await
+            .ok_or(error!("Could not find item with id `{}`", id))??;
+
+        Ok(result)
     }
 
     async fn update(&self, data: DTO<T>) -> Result<DTO<T>> {
@@ -87,6 +97,32 @@ where
         opt.skip = Some(start as u64);
 
         let mut result = col.find(doc! {}, opt).await?;
+        let mut data: Vec<DTO<T>> = Vec::new();
+        while let Some(u) = result.next().await {
+            if let Ok(uu) = u {
+                data.push(uu);
+            }
+        }
+        Ok(data)
+    }
+
+    async fn find(
+        &self,
+        query: Document,
+        page: u64,
+        page_size: i64,
+        options: Option<FindOptions>,
+    ) -> Result<Vec<DTO<T>>> {
+        let col = self.get_collection()?;
+
+        let mut opt = options.unwrap_or(FindOptions::default());
+
+        opt.sort = Some(doc! {"created_at": -1});
+        let start = (page as i64 - 1) * page_size;
+        opt.limit = Some(page_size);
+        opt.skip = Some(start as u64);
+
+        let mut result = col.find(query, opt).await?;
         let mut data: Vec<DTO<T>> = Vec::new();
         while let Some(u) = result.next().await {
             if let Ok(uu) = u {

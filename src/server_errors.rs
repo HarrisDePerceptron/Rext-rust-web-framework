@@ -71,3 +71,22 @@ impl IntoResponse for ServerError {
         }
     }
 }
+
+pub struct AppError(pub anyhow::Error);
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let msg = format!("Something went wrong: {}", self.0);
+
+        ServerError::BadRequest(msg).into_response()
+    }
+}
+
+impl<E> From<E> for AppError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(err: E) -> Self {
+        Self(err.into())
+    }
+}
