@@ -20,34 +20,32 @@ pub struct WebsocketServer {
 }
 
 impl WebsocketServer {
-    pub fn update_room(&mut self, room: room::Room) -> Option<room::Room> {
+    pub fn update_room(&mut self, room: room::Room) -> room::Room {
         for r in self.rooms.iter_mut() {
             if r.id == room.id {
                 r.sockets = room.sockets;
-                return Some(r.clone());
+                return r.clone();
             }
         }
 
         self.rooms.push(room.clone());
-        Some(room)
+        room
     }
-    pub fn join_room(&mut self, room_id: &str, client: socket::AppSocket) -> Option<room::Room> {
+    pub fn join_room(&mut self, room_id: &str, client: socket::AppSocket) -> Result<room::Room> {
         let room = self.get_room(room_id);
 
         if let Some(mut room) = room {
             if let Err(e) = room.add_client(client) {
-                log::error!("error adding client to room: {}", e.to_string());
-                None
+                Err(error!("Error adding client to room: {}", e.to_string()))
             } else {
-                self.update_room(room)
+                Ok(self.update_room(room))
             }
         } else {
             let mut room = room::Room::new(room_id);
             if let Err(e) = room.add_client(client) {
-                log::error!("error adding client to new room: {}", e.to_string());
-                None
+                Err(error!("Error adding client to room: {}", e.to_string()))
             } else {
-                self.update_room(room)
+                Ok(self.update_room(room))
             }
         }
     }
@@ -59,9 +57,7 @@ impl WebsocketServer {
 
         if let Some(mut room) = room {
             room.remove_client(client_id)?;
-            return self
-                .update_room(room)
-                .ok_or(error!("Room not found. not updated"));
+            return Ok(self.update_room(room));
         }
 
         Err(error!("Could not leave room"))

@@ -57,12 +57,6 @@ pub async fn websocket_handler(
         token = tokens[0].to_string();
     }
 
-    log::info!(
-        "Authorization value!!!: {}, token: {}, tokens: {:?}",
-        authorization,
-        token,
-        tokens
-    );
     let ver = match auth::verify_token(&token) {
         Ok(v) => v,
         Err(e) => {
@@ -86,8 +80,6 @@ pub async fn websocket_handler(
 
     let user_id = decoded.sub.to_string();
 
-    log::info!("User id is : {}", user_id);
-
     let user = match state.application_service.user.get(&user_id).await {
         Ok(v) => v,
         Err(e) => {
@@ -95,8 +87,6 @@ pub async fn websocket_handler(
                 .into_response()
         }
     };
-
-    log::info!("User from token: {:?}", user);
 
     let websocket_server = state.websocke_server.clone();
 

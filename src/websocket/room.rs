@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::websocket::socket;
+use crate::websocket::{messages, socket};
 use anyhow::{anyhow as error, Result};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -28,7 +28,15 @@ impl Room {
     pub async fn send(&self, msg: &str) -> Result<()> {
         for s in &self.sockets {
             log::info!("Sening message in room {} to client: {}", self.id, s.id);
-            s.socket.send(msg.to_string()).await?;
+
+            let response = messages::SocketResponse {
+                response_type: messages::SocketResponseType::Ok,
+                method_name: String::from("room::send"),
+                data: None,
+                message: msg.to_string(),
+            };
+
+            s.socket.send(response).await?;
         }
 
         Ok(())

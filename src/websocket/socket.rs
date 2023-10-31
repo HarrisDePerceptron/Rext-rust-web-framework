@@ -35,13 +35,15 @@ use crate::websocket::room;
 #[derive(Clone, Debug)]
 pub struct AppSocket {
     pub id: String,
-    pub socket: mpsc::Sender<String>,
+    //pub socket: mpsc::Sender<String>,
+    pub socket: mpsc::Sender<messages::SocketResponse>,
+
     pub user: Option<DTO<User>>,
 }
 
 pub struct AppSocketResv {
     pub id: String,
-    pub socket: mpsc::Receiver<String>,
+    pub socket: mpsc::Receiver<messages::SocketResponse>,
 }
 
 pub async fn handle_socket(
@@ -79,8 +81,26 @@ pub async fn broadcast(msg: &str, state: Arc<Mutex<WebsocketServer>>) {
     //
     let sockets = state.lock().unwrap().sockets.clone();
     for soc in &sockets {
-        soc.socket.send(msg.to_string()).await.unwrap();
+        //soc.socket.send(msg.to_string()).await.unwrap();
     }
+}
+
+async fn send_error_socket(
+    e: &str,
+    method_name: &str,
+    client_id: &str,
+    state: Arc<Mutex<WebsocketServer>>,
+) {
+    if let Err(e) = messages::send_error_response(
+        e.to_string().as_str(),
+        method_name,
+        client_id,
+        state.clone(),
+    )
+    .await
+    {
+        log::error!("Send response error: {}", e.to_string());
+    };
 }
 
 pub async fn read(
@@ -91,6 +111,14 @@ pub async fn read(
     while let Some(Ok(msg)) = receiver.next().await {
         if let Message::Text(msg) = msg {
             if let Err(e) = messages::parse_text_messages(msg, &client_id, state.clone()).await {
+                send_error_socket(
+                    e.to_string().as_str(),
+                    "parse_text_message",
+                    &client_id,
+                    state.clone(),
+                )
+                .await;
+
                 log::error!("Parse message error: {}", e.to_string());
             };
         } else if let Message::Close(c) = msg {
@@ -100,7 +128,15 @@ pub async fn read(
                 msg = format!("Closing... code: {},  reason: {}", f.code, f.reason);
             }
 
-            if let Err(e) = messages::parse_close_messages(&msg, &client_id, state.clone()).await {
+            if let Err(e) = messages::parse_close_messages(&client_id, state.clone()).await {
+                send_error_socket(
+                    e.to_string().as_str(),
+                    "parse_close_messages",
+                    &client_id,
+                    state.clone(),
+                )
+                .await;
+
                 log::error!("Close message error: {}", e.to_string());
             };
 
@@ -110,6 +146,8 @@ pub async fn read(
             continue;
         }
     }
+
+    log::debug!("Exiting the read loop for client: {}", client_id);
 
     Ok(())
 }
@@ -123,33 +161,13 @@ pub async fn write(
     //
 
     while let Some(msg) = app_socket_resv.socket.recv().await {
-        log::info!("Resvc message to send: {}", msg);
+        log::info!("Resvc message to send: {}", msg.message);
 
-        if msg == messages::SocketMessages::SocketClose.to_string() {
-            match sender.close().await {
-                Ok(_) => (),
-                Err(e) => {
-                    log::error!("Failed to close connection: {}", e.to_string());
-                }
-            }
-
-            if let Ok(mut state) = state.lock() {
-                match state.remove_client_server(&client_id) {
-                    Ok(_) => (),
-                    Err(e) => {
-                        log::error!("Removing client from server error: {}", e.to_string());
-                    }
-                }
-            }
-            break;
+        if let Err(e) =
+            messages::parse_sender_message(&msg, &mut sender, &client_id, state.clone()).await
+        {
+            log::error!("Parse sender message error: {}", e.to_string());
         }
-
-        match sender.send(Message::Text(msg.to_string())).await {
-            Ok(_) => (),
-            Err(e) => {
-                log::error!("Socket client message send error: {}", e.to_string());
-                continue;
-            }
-        };
     }
+    log::debug!("Exiting the write loop for client: {}", client_id);
 }

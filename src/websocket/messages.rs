@@ -17,7 +17,7 @@ pub struct RoomMessage {
     pub room: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, strum::Display)]
 pub enum Command {
     JOIN(String),
     LEAVE(String),
@@ -27,6 +27,42 @@ pub enum Command {
 #[derive(strum::Display)]
 pub enum SocketMessages {
     SocketClose,
+}
+
+#[derive(strum::Display, Clone, Deserialize, Serialize, Debug)]
+pub enum SocketResponseType {
+    Ok,
+    Error,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SocketResponse {
+    pub message: String,
+    pub data: Option<String>,
+    pub response_type: SocketResponseType,
+    pub method_name: String,
+}
+
+pub async fn send_error_response(
+    error_message: &str,
+    method_name: &str,
+    client_id: &str,
+    state: Arc<Mutex<WebsocketServer>>,
+) -> Result<()> {
+    let app_socket = get_appsocket(client_id, state)?;
+
+    let response = SocketResponse {
+        response_type: SocketResponseType::Error,
+        data: None,
+        method_name: method_name.to_string(),
+        message: error_message.to_string(),
+    };
+
+    //let response_str = serde_json::to_string(&response)?;
+
+    app_socket.socket.send(response).await?;
+
+    Ok(())
 }
 
 fn get_appsocket(client_id: &str, state: Arc<Mutex<WebsocketServer>>) -> Result<AppSocket> {
@@ -55,7 +91,7 @@ pub async fn parse_text_messages(
     match command {
         Command::JOIN(v) => {
             if let Ok(mut state) = state.lock() {
-                state.join_room(&v, current_appsocket);
+                state.join_room(&v, current_appsocket)?;
 
                 log::info!("Joined room {} with client id {}", v, client_id);
             }
@@ -83,7 +119,6 @@ pub async fn parse_text_messages(
 }
 
 pub async fn parse_close_messages(
-    msg: &str,
     client_id: &str,
     state: Arc<Mutex<WebsocketServer>>,
 ) -> Result<()> {
@@ -91,24 +126,47 @@ pub async fn parse_close_messages(
 
     //current_appsocket.socket.send(msg.to_string()).await?;
 
-    current_appsocket
-        .socket
-        .send(SocketMessages::SocketClose.to_string())
-        .await?;
+    let response = SocketResponse {
+        message: SocketMessages::SocketClose.to_string(),
+        data: None,
+        method_name: String::from("parse_close_message"),
+        response_type: SocketResponseType::Ok,
+    };
+
+    current_appsocket.socket.send(response).await?;
+
+    Ok(())
+}
+
+pub async fn parse_text_response(
+    msg: &SocketResponse,
+    sender: &mut SplitSink<WebSocket, Message>,
+) -> Result<()> {
+    let response_str = serde_json::to_string(msg)?;
+
+    sender.send(Message::Text(response_str)).await?;
 
     Ok(())
 }
 
 pub async fn parse_sender_message(
-    msg: &str,
+    msg: &SocketResponse,
     sender: &mut SplitSink<WebSocket, Message>,
+    client_id: &str,
+    state: Arc<Mutex<WebsocketServer>>,
 ) -> Result<()> {
-    if msg == SocketMessages::SocketClose.to_string() {
-        sender.close().await?;
+    if msg.message == SocketMessages::SocketClose.to_string() {
+        if let Err(e) = sender.close().await {
+            log::error!("Sender socker close error: {}", e.to_string());
+        };
+
+        if let Ok(mut state) = state.lock() {
+            state.remove_client_server(client_id)?;
+        }
         return Ok(());
     }
 
-    sender.send(Message::Text(msg.to_string())).await?;
+    parse_text_response(msg, sender).await?;
 
     Ok(())
 }
