@@ -1,6 +1,9 @@
+use std::sync::{Arc, Mutex};
+
 //#![allow(unused_imports)]
 use anyhow::Result;
 
+use axum_test::application_factory::ApplicationFactory;
 use axum_test::server;
 
 use axum_test::auth;
@@ -34,7 +37,11 @@ async fn main() -> Result<()> {
 
     log::info!("Token is: {}", token);
 
-    let handler = server::server(&address).await?;
+    let fac = ApplicationFactory::new().await?;
+
+    let app_factory = Arc::new(Mutex::new(fac));
+
+    let handler = server::server(&address, app_factory).await?;
 
     log::info!("Server started");
 

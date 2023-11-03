@@ -3,6 +3,7 @@ use anyhow::{anyhow, Result};
 use crate::app::application_dao::ApplicationDao;
 use crate::app::application_service::ApplicationService;
 use crate::application_factory::{self, ApplicationFactory};
+use crate::websocket::redis_pubsub::RedisPubsubAdapter;
 use axum::{routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -27,20 +28,57 @@ struct HelloResponse {
 }
 
 pub struct ServerState {
-    pub appliction_factory: Arc<ApplicationFactory>,
+    pub appliction_factory: Arc<Mutex<ApplicationFactory>>,
     pub application_dao: Arc<ApplicationDao>,
     pub application_service: Arc<ApplicationService>,
     pub websocke_server: Arc<Mutex<WebsocketServer>>,
 }
 
-pub async fn server(address: &str) -> Result<tokio::task::JoinHandle<()>> {
-    let factory = application_factory::ApplicationFactory::new().await?;
+async fn adapter_loop(
+    mut adapt: RedisPubsubAdapter,
+    state: Arc<Mutex<WebsocketServer>>,
+) -> Result<()> {
+    let mut resv = adapt.run()?;
 
-    let websocket_server = Arc::new(Mutex::new(WebsocketServer {
-        sockets: Vec::new(),
-        rooms: Vec::new(),
-        factory,
-    }));
+    log::info!("Adapter running!!!");
+
+    while let Some(payload) = resv.recv().await {
+        log::info!(
+            "Got payload adapter loop: {}: {}",
+            payload.channel,
+            payload.data
+        );
+        let room = match state.lock() {
+            Ok(mut v) => match v.get_room(payload.channel.as_str()) {
+                Some(v) => v,
+                None => {
+                    log::error!("Did not get room: {}", payload.channel);
+                    continue;
+                }
+            },
+            Err(e) => {
+                log::error!("State lock error: {}", e.to_string());
+                continue;
+            }
+        };
+
+        if let Err(e) = room.send(payload.data.as_str()).await {
+            log::error!("Unable to send to room: {}", e.to_string());
+            continue;
+        }
+    }
+
+    log::info!("Exiting adapter loop...");
+
+    Ok(())
+}
+
+pub async fn server(
+    address: &str,
+    fac: Arc<Mutex<ApplicationFactory>>,
+) -> Result<tokio::task::JoinHandle<()>> {
+    let websocket_server = Arc::new(Mutex::new(WebsocketServer::new(fac.clone())));
+
     let fac2 = application_factory::ApplicationFactory::new().await?;
     let fac2 = Arc::new(fac2);
 
@@ -58,8 +96,8 @@ pub async fn server(address: &str) -> Result<tokio::task::JoinHandle<()>> {
     let server_state = Arc::new(ServerState {
         application_service: application_service.clone(),
         application_dao: application_dao.clone(),
-        appliction_factory: fac2.clone(),
-        websocke_server: websocket_server,
+        appliction_factory: fac.clone(),
+        websocke_server: websocket_server.clone(),
     });
 
     let app = Router::new()
@@ -79,6 +117,9 @@ pub async fn server(address: &str) -> Result<tokio::task::JoinHandle<()>> {
     log::info!("Serving on {}", address);
     let addr = address.to_string();
 
+    let adapter = RedisPubsubAdapter::new("room::*", fac.clone());
+
+    tokio::spawn(adapter_loop(adapter, websocket_server.clone()));
     let handler = tokio::spawn(async move {
         axum::Server::bind(&addr.parse().unwrap())
             .serve(app.into_make_service())

@@ -5,3 +5,4 @@ pub mod room;
 pub mod socket;
 
 pub mod messages;
+pub mod redis_pubsub;

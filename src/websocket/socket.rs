@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 use crate::{
     app::{dto::DTO, user::User},
+    application_factory::ApplicationFactory,
     server,
 };
 use futures::{
@@ -31,6 +32,8 @@ use crate::websocket::websocket_server::WebsocketServer;
 
 use crate::websocket::messages;
 use crate::websocket::room;
+
+use super::redis_pubsub::RedisPubsubAdapter;
 
 #[derive(Clone, Debug)]
 pub struct AppSocket {
@@ -70,19 +73,11 @@ pub async fn handle_socket(
     };
 
     {
-        state.lock().unwrap().sockets.push(app_socket.clone());
+        state.lock().unwrap().add_client(app_socket.clone());
     }
 
     tokio::spawn(read(resv, id.to_string(), state.clone()));
     tokio::spawn(write(sender, app_socket_resc, id, state.clone()));
-}
-
-pub async fn broadcast(msg: &str, state: Arc<Mutex<WebsocketServer>>) {
-    //
-    let sockets = state.lock().unwrap().sockets.clone();
-    for soc in &sockets {
-        //soc.socket.send(msg.to_string()).await.unwrap();
-    }
 }
 
 async fn send_error_socket(

@@ -1,10 +1,14 @@
+use std::sync::{Arc, Mutex};
+
 use crate::websocket::socket;
 
 use anyhow::{anyhow as error, Result};
 
-use crate::application_factory;
+use crate::application_factory::ApplicationFactory;
 use crate::websocket::room;
 use serde::{Deserialize, Serialize};
+
+use super::{redis_pubsub::RedisPubsubAdapter, socket::AppSocket};
 
 #[derive(Debug, Serialize, Clone)]
 struct ServerResponse<T> {
@@ -14,12 +18,23 @@ struct ServerResponse<T> {
 }
 
 pub struct WebsocketServer {
-    pub sockets: Vec<socket::AppSocket>,
-    pub rooms: Vec<room::Room>,
-    pub factory: application_factory::ApplicationFactory,
+    sockets: Vec<socket::AppSocket>,
+    rooms: Vec<room::Room>,
+    factory: Arc<Mutex<ApplicationFactory>>,
 }
 
 impl WebsocketServer {
+    pub fn new(fac: Arc<Mutex<ApplicationFactory>>) -> Self {
+        Self {
+            sockets: vec![],
+            rooms: vec![],
+            factory: fac,
+        }
+    }
+
+    pub fn add_client(&mut self, app_socket: AppSocket) {
+        self.sockets.push(app_socket);
+    }
     pub fn update_room(&mut self, room: room::Room) -> room::Room {
         for r in self.rooms.iter_mut() {
             if r.id == room.id {

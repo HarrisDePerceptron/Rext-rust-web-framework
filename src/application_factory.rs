@@ -1,10 +1,13 @@
-use crate::mongo_persistence::MongoProvider;
+use crate::persistence::mongo_persistence::MongoProvider;
 use crate::secrets;
+
+use crate::persistence::redis_provider::RedisProvider;
 
 use anyhow::Result;
 
 pub struct ApplicationFactory {
     pub mongo_provider: MongoProvider,
+    pub redis_provider: RedisProvider,
 }
 
 impl ApplicationFactory {
@@ -15,7 +18,17 @@ impl ApplicationFactory {
         let mut mongo_provider = MongoProvider::new(&mongo_uri, &mongo_database);
 
         mongo_provider.connect().await?;
+        log::info!("Mongo Connected!!");
 
-        Ok(Self { mongo_provider })
+        let redis_uri = secrets::REDIS_URI.to_string();
+        let mut redis_provider = RedisProvider::new(redis_uri.as_str());
+        redis_provider.connect().await?;
+
+        log::info!("Redis connected!!");
+
+        Ok(Self {
+            mongo_provider,
+            redis_provider,
+        })
     }
 }
