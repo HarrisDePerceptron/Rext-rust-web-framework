@@ -53,6 +53,7 @@ pub async fn handle_socket(
     socket: WebSocket,
     state: Arc<Mutex<WebsocketServer>>,
     user: Option<DTO<User>>,
+    app_fac: Arc<Mutex<ApplicationFactory>>,
 ) {
     log::info!("Socket connected!!");
 
@@ -76,7 +77,7 @@ pub async fn handle_socket(
         state.lock().unwrap().add_client(app_socket.clone());
     }
 
-    tokio::spawn(read(resv, id.to_string(), state.clone()));
+    tokio::spawn(read(resv, id.to_string(), state.clone(), app_fac.clone()));
     tokio::spawn(write(sender, app_socket_resc, id, state.clone()));
 }
 
@@ -102,10 +103,13 @@ pub async fn read(
     mut receiver: SplitStream<WebSocket>,
     client_id: String,
     state: Arc<Mutex<WebsocketServer>>,
+    app_fac: Arc<Mutex<ApplicationFactory>>,
 ) -> Result<()> {
     while let Some(Ok(msg)) = receiver.next().await {
         if let Message::Text(msg) = msg {
-            if let Err(e) = messages::parse_text_messages(msg, &client_id, state.clone()).await {
+            if let Err(e) =
+                messages::parse_text_messages(msg, &client_id, state.clone(), app_fac.clone()).await
+            {
                 send_error_socket(
                     e.to_string().as_str(),
                     "parse_text_message",

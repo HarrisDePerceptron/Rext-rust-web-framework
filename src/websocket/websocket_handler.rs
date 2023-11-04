@@ -89,6 +89,7 @@ pub async fn websocket_handler(
     };
 
     let websocket_server = state.websocke_server.clone();
+    let app_fac = state.appliction_factory.clone();
 
-    ws.on_upgrade(|socket| socket::handle_socket(socket, websocket_server, Some(user)))
+    ws.on_upgrade(|socket| socket::handle_socket(socket, websocket_server, Some(user), app_fac))
 }

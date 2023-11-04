@@ -48,8 +48,20 @@ async fn adapter_loop(
             payload.channel,
             payload.data
         );
+        let channel_split: Vec<String> =
+            payload.channel.split("::").map(|e| e.to_string()).collect();
+
+        if channel_split.len() < 2 {
+            continue;
+        }
+
+        let room_name = channel_split[1].to_string();
+        if room_name.is_empty() {
+            continue;
+        }
+
         let room = match state.lock() {
-            Ok(mut v) => match v.get_room(payload.channel.as_str()) {
+            Ok(mut v) => match v.get_room(room_name.as_str()) {
                 Some(v) => v,
                 None => {
                     log::error!("Did not get room: {}", payload.channel);

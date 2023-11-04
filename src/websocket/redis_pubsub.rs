@@ -60,10 +60,6 @@ impl RedisPubsubAdapter {
                     log::error!("Pubsub sender error: {}", e.to_string());
                 };
 
-                //if let Err(e) = sender.send(p).await {
-                //    log::error!("Sending pubsub payload error: {}", e.to_string());
-                //}
-
                 log::info!("Got  payload: {channel_name}: {payload}");
             } else if let Err(e) = payload {
                 log::error!("Got pubsub read error: {}", e.to_string());
@@ -96,11 +92,6 @@ impl RedisPubsubAdapter {
             oneshot::Receiver<String>,
         ) = oneshot::channel();
         self.keep_running_sender = Some(keep_running_sender);
-
-        //tokio::spawn(async move {
-        //    RedisPubsubAdapter::pubsub_loop(&subscribe, conn, tx, keep_running_resv).await
-        //});
-        //
 
         tokio::task::spawn_blocking(move || {
             RedisPubsubAdapter::pubsub_loop(&subscribe, conn, tx, keep_running_resv)

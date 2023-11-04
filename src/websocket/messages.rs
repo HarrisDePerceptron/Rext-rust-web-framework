@@ -4,10 +4,13 @@ use futures::{
     sink::SinkExt,
     stream::{SplitSink, SplitStream, StreamExt},
 };
+use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
-use crate::websocket::room;
+use crate::{
+    app::application_dao::ApplicationDao, application_factory::ApplicationFactory, websocket::room,
+};
 
 use super::{socket::AppSocket, websocket_server::WebsocketServer};
 
@@ -81,6 +84,7 @@ pub async fn parse_text_messages(
     msg: String,
     client_id: &str,
     state: Arc<Mutex<WebsocketServer>>,
+    app_fac: Arc<Mutex<ApplicationFactory>>,
 ) -> Result<()> {
     log::info!("Got message: {}: {}", client_id, msg);
 
@@ -104,14 +108,26 @@ pub async fn parse_text_messages(
             }
         }
         Command::MESSAGE(v) => {
-            let mut room: Option<room::Room> = None;
+            //let mut room: Option<room::Room> = None;
 
-            if let Ok(mut state) = state.lock() {
-                room = state.get_room(&v.room);
-            }
+            //if let Ok(mut state) = state.lock() {
+            //    room = state.get_room(&v.room);
+            //}
 
-            let room = room.ok_or(error!(format!("Unable to get room: {}", v.room)))?;
-            room.send(&v.message).await?;
+            //let room = room.ok_or(error!(format!("Unable to get room: {}", v.room)))?;
+            //room.send(&v.message).await?;
+            //
+
+            let mut conn = match app_fac.lock() {
+                Ok(v) => v.redis_provider.get_connection()?,
+                Err(e) => return Err(error!("application factory lock error: {}", e.to_string())),
+            };
+
+            let channel_name = format!("room::{}", v.room);
+
+            conn.publish(channel_name, v.message).await?;
+
+            log::info!("Sending message through message parse");
         }
     };
 
