@@ -108,16 +108,6 @@ pub async fn parse_text_messages(
             }
         }
         Command::MESSAGE(v) => {
-            //let mut room: Option<room::Room> = None;
-
-            //if let Ok(mut state) = state.lock() {
-            //    room = state.get_room(&v.room);
-            //}
-
-            //let room = room.ok_or(error!(format!("Unable to get room: {}", v.room)))?;
-            //room.send(&v.message).await?;
-            //
-
             let mut conn = match app_fac.lock() {
                 Ok(v) => v.redis_provider.get_connection()?,
                 Err(e) => return Err(error!("application factory lock error: {}", e.to_string())),

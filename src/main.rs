@@ -6,7 +6,6 @@ use anyhow::Result;
 use axum_test::application_factory::ApplicationFactory;
 use axum_test::server;
 
-use axum_test::auth;
 use axum_test::secrets;
 use dotenv::dotenv;
 
@@ -24,18 +23,6 @@ async fn main() -> Result<()> {
     dotenv().expect(".dot env file unable to load");
 
     let address = secrets::SERVER_ADDRESS.to_string();
-
-    let token = auth::generate_token(
-        "this is a long subject",
-        &secrets::TOKEN_ISSUER.to_string(),
-        secrets::TOKEN_EXPIRY_DAYS
-            .to_string()
-            .parse::<u64>()
-            .unwrap(),
-    )
-    .unwrap();
-
-    log::info!("Token is: {}", token);
 
     let fac = ApplicationFactory::new().await?;
 
